@@ -1,0 +1,5 @@
+[requirement#SWR-0102]
+[modality=shall, kind=functional]
+--
+The system shall time-stamp every fault.
+--

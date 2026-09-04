@@ -1,0 +1,11 @@
+[requirement#SWR-0100]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall log all faults.
+--
+
+[requirement#SWR-0100]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall rate-limit logs.
+--

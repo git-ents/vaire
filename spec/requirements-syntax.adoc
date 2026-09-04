@@ -1,0 +1,414 @@
+# Requirements Syntax
+
+vaire requirement records in AsciiDoc.
+Written after the MVP; reflects what `crates/vaire` accepts.
+
+== 1. Scope
+
+.Conforming document
+* Parses under stock Asciidoctor and acdc with no extension loaded.
+* Degrades to an anchored open block with attributes (no extension loaded).
+* Passes `vaire check` with zero violations.
+
+.Conforming processor
+* Extracts requirement records without reserializing non-requirement content.
+* Preserves byte identity on extract-then-emit of an unmodified record set.
+
+== 2. Block form
+
+* A requirement is a delimited open block (`--`) carrying the style
+  `requirement`.
+* `====` (example blocks) is not used: an example block cannot contain another
+  `====` block one level down, and requirement bodies need examples
+  (parenthetical: the seed syntax used `====`; the open block replaced it).
+* The `--` open block nests `====`, `[.example]`, and every other block.
+* Attribute lines stack above the block, one concern per line.
+* Later attribute lines override earlier lines on the same key (AsciiDoc
+  Language spec, block attribute line semantics).
+* Attribute values containing `,` or `]` need quoting: `rationale="a, b"`.
+* acdc (0.9.0) does not recognize an indented open block with indented
+  attribute lines; requirements MUST NOT be indented
+  (unspecified in the AsciiDoc Language spec; Asciidoctor is more permissive).
+* The block span reported by acdc starts at the first attribute line, not at
+  the delimiter.
+
+== 3. Identity
+
+* The id is the AsciiDoc anchor via the `#` shorthand on the first attribute
+  line: `[requirement#SWR-0142]`.
+* `<<ID>>` and `xref:file.adoc#ID[]` work with no extension loaded.
+* One id per requirement. Ids are immutable through `emit`.
+
+.ID grammar (ABNF)
+[,abnf]
+----
+id            = ALPHA *( ALPHA / DIGIT / "-" / "_" )
+requirement   = "[" style "#" id "]" 1*attribute-line open-block
+style         = "requirement"
+----
+
+* Uniqueness scope: the file set given to `vaire check`.
+* Include trees are resolved by their member files; `vaire check` sees one
+  flat file set (includes themselves are not followed by the MVP).
+
+== 4. Attribute vocabulary
+
+* Named attributes appear as `name=value` on attribute lines.
+* Unknown attribute names are a validation error (V6).
+
+[cols="1,2,1,1,3"]
+|===
+|Name |Type |Card. |Required |Allowed values
+
+|kind
+|string
+|1
+|yes
+|`functional`, `quality`, `interface`
+
+|modality
+|string
+|1
+|yes
+|`shall`, `should`, `may`
+
+|status
+|string
+|0..1
+|no
+|`draft`, `approved`, `rejected`
+
+|source
+|string
+|0..1
+|no
+|stakeholder id (e.g. `STK-014`)
+
+|verification
+|string
+|0..1
+|see V3
+|`analysis`, `inspection`, `demonstration`, `test`, `review`
+
+|volatility
+|string
+|0..1
+|no
+|`low`, `medium`, `high`
+
+|refines
+|id list
+|0..1
+|no
+|comma-separated requirement ids; upward
+
+|derives-from
+|id list
+|0..1
+|no
+|comma-separated requirement ids; upward
+
+|satisfies
+|id list
+|0..1
+|no
+|comma-separated requirement ids; upward
+
+|allocated-to
+|string
+|0..1
+|no
+|component path (e.g. `arm.control`)
+
+|characteristic
+|string
+|0..1
+|no
+|with `kind=quality` (e.g. `availability`)
+
+|rationale
+|string
+|0..1
+|no
+|one-line rationale; long rationale is a `.rationale` body block
+|===
+
+== 5. Body structure
+
+* First paragraph of the body: the normative statement.
+* Prose carries the modality keyword; validation enforces agreement (V4).
+* One modality keyword per statement (V5).
+* Nested blocks follow, with roles:
+
+[cols="1,3"]
+|===
+|Role |Content
+
+|[.rationale]
+|why the requirement exists
+
+|[.acceptance]
+|unordered list of acceptance criteria
+
+|[.note]
+|clarification, not normative
+|===
+
+== 6. Quality requirement form
+
+* `kind=quality` requirements use Planguage as a description list.
+* `Scale::`, `Meter::`, `Must::`, `Plan::` entries.
+* `Must::` is the normative level; V4 checks for its presence instead of a
+  prose keyword.
+* `characteristic` names the quality dimension.
+
+== 7. Traceability
+
+* Links point upward only: `refines`, `derives-from`, `satisfies` live on the
+  requirement.
+* Downward links live in the artifacts that implement or verify.
+* Cross-file resolution: trace targets resolve against the ids of the whole
+  file set passed to `check`.
+* Dangling target: error (V2).
+* Cyclic trace graphs: forbidden by this spec; the MVP does not detect cycles
+  (see open questions).
+
+== 8. Data model
+
+* `extract` emits a JSON array of records; one record per requirement block.
+
+[,json]
+----
+{
+  "file":       "path exactly as passed to extract",
+  "id":         "SWR-0142",
+  "span":       { "start": 0, "end": 640 },   // attr line 1 .. close delimiter
+  "attr_lines": [
+    {
+      "start": 0, "end": 25,                    // byte span, newline excluded
+      "raw":   "[requirement#SWR-0142]",
+      "items": [
+        { "style": "requirement" },
+        { "id": "SWR-0142" }
+      ]
+    },
+    {
+      "start": 26, "end": 66,
+      "raw":   "[modality=shall, kind=functional]",
+      "items": [
+        { "kv": { "name": "modality", "value": "shall" } },
+        { "kv": { "name": "kind", "value": "functional" } }
+      ]
+    }
+  ],
+  "delim": "--",
+  "body_raw": "raw body bytes between the delimiters"
+}
+----
+
+* `items` is the editable surface: `emit` re-renders only lines whose items
+  differ from the current file.
+* Merged field view (`fields()`): later lines override earlier lines.
+* Raw items (`Item::Raw`) are preserved and re-emitted verbatim.
+
+== 9. Round-trip semantics
+
+[cols="1,3"]
+|===
+|Class |Content
+
+|Preserved byte-exactly
+|titles, prose, includes, attribute entries, comments, whitespace, block
+bodies, delimiters, all unedited attribute lines
+
+|Normalized on edit
+|the single re-rendered attribute line (`[style#id, k=v, ...]`); quoted
+values re-quoted when needed; item spacing inside that line only
+
+|Rejected as unrepresentable
+|id renames; attribute line addition/removal; record ids absent from the
+target file; body edits via `emit`
+|===
+
+== 10. Validation rules
+
+[cols="1,2,1,3"]
+|===
+|Rule |Condition |Severity |Message shape
+
+|V1
+|id appears more than once in the file set
+|error
+|`V1: <file>: duplicate requirement id [<id>]`
+
+|V2
+|trace target id absent from the file set
+|error
+|`V2: <file>: <key> target `<id>` not found [<id>]`
+
+|V3
+|no requirement links upward to this one and `verification` absent
+|error
+|`V3: <file>: leaf requirement has no verification attribute [<id>]`
+
+|V4
+|prose lacks the modality keyword, or `kind=quality` lacks `Must::`
+|error
+|`V4: <file>: prose does not carry modality `<m>`: "<statement>" [<id>]`
+
+|V5
+|more than one modality keyword in the statement
+|error
+|`V5: <file>: more than one modality keyword in the statement [<id>]`
+
+|V6
+|named attribute not in the vocabulary
+|error
+|`V6: <file>: unknown attribute `<name>` [<id>]`
+|===
+
+* All rules are errors; any violation exits nonzero.
+
+== 11. Interop mapping
+
+[cols="1,1,1,1"]
+|===
+|vaire |tracey rule annotation |OpenFastTrace |ReqIF
+
+|id
+|spec id
+|specobject id
+|`REQ-IF-IDENTIFIER`
+
+|kind
+|(no counterpart)
+|`reqtype` fragment
+|attribute
+
+|modality
+|(no counterpart; prose only)
+|(no counterpart)
+|attribute
+
+|status
+|(no counterpart)
+|`status`
+|attribute
+
+|source
+|(no counterpart)
+|`source`
+|attribute
+
+|verification
+|(no counterpart)
+|(no counterpart)
+|attribute
+
+|refines
+|`refines` in rule text
+|`refines`
+|`SpecRelation` (downward in ReqIF; direction must be inverted)
+
+|derives-from
+|(no counterpart)
+|`refines`
+|`SpecRelation`
+
+|satisfies
+|(no counterpart)
+|(no counterpart)
+|`SpecRelation`
+
+|allocated-to
+|(no counterpart)
+|(no counterpart)
+|attribute
+
+|acceptance list
+|rule annotations per requirement
+|(no counterpart)
+|child requirements
+
+|===
+* tracey cannot express requirement metadata, only per-requirement rule
+  references.
+* OpenFastTrace has no modality; `shall` vs `may` is prose-only.
+* ReqIF relations are first-class but carry no keyword semantics.
+
+== 12. Examples
+
+.Valid: the seed requirement (passes; `tests/corpus/seed.adoc`)
+[,asciidoc]
+----
+[requirement#SWR-0142]
+[modality=shall, kind=functional, status=approved]
+[source=STK-014, verification=test, volatility=low]
+[refines=SYR-0031, allocated-to=arm.control]
+--
+The joint controller shall publish a `JointState` sample within 2 ms of
+each encoder read.
+
+.Rationale
+[.rationale]
+Impedance control diverges above 2 ms of feedback age.
+
+.Acceptance
+[.acceptance]
+* p99 publish latency <= 2 ms over 10^6 samples at 1 kHz
+* zero dropped samples at 3x nominal CPU load
+--
+----
+
+.Valid: quality requirement (passes; `tests/corpus/seed.adoc`)
+[,asciidoc]
+----
+[requirement#SWR-0207]
+[kind=quality, characteristic=availability, modality=shall]
+[verification=analysis]
+--
+Scale:: uninterrupted control-loop hours
+Meter:: soak test, 72 h, nominal payload
+Must:: 500
+Plan:: 2000
+--
+----
+
+.Valid: refined-from-parent (passes; `tests/corpus/traces.adoc`)
+[,asciidoc]
+----
+[requirement#SWR-0005]
+[modality=shall, kind=functional, verification=analysis]
+--
+The controller shall log every fault with a timestamp.
+--
+
+[requirement#SWR-0004]
+[modality=shall, kind=functional, verification=demonstration]
+[refines=SWR-0005]
+[rationale="safety interlock must respond before motion", allocated-to=safety]
+--
+The interlock shall stop motion within 50 ms of a trip signal.
+--
+----
+
+.Invalid per rule (each fails exactly its rule; `tests/invalid/`)
+
+* V1 duplicate id: `tests/invalid/v1-duplicate-id.adoc`
+* V2 unresolved trace: `tests/invalid/v2-unresolved-trace.adoc`
+* V3 missing verification on leaf: `tests/invalid/v3-missing-verification.adoc`
+* V4 modality disagreement: `tests/invalid/v4-modality-disagreement.adoc`
+* V5 compound statement: `tests/invalid/v5-compound-statement.adoc`
+* V6 unknown attribute: `tests/invalid/v6-unknown-attribute.adoc`
+
+== 13. Open questions
+
+* Quoting for attribute values containing `"` itself?
+* Cycle detection over the trace graph: specified, not yet enforced.
+* Does `check` follow `include::` itself, or must callers pass member files?
+* Is `status` vocabulary closed, or user-extensible?
+* Multi-line statements: which line carries the modality keyword check?
+* `rationale` as attribute vs `.rationale` block: allow both, or one?
+* Indented requirements inside list items: contribute span support upstream
+  to acdc, or forbid forever?
+* Editing body text through `emit`: line-splice bodies, or never?

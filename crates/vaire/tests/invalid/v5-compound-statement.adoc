@@ -1,0 +1,5 @@
+[requirement#SWR-0104]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall retry a dropped sample and shall cap retries at two.
+--

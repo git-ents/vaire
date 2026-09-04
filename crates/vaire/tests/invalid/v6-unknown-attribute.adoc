@@ -1,0 +1,6 @@
+[requirement#SWR-0105]
+[modality=shall, kind=functional, verification=test]
+[priority=high]
+--
+The system shall degrade gracefully under load.
+--

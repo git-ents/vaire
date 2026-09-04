@@ -1,0 +1,6 @@
+[requirement#SWR-0101]
+[modality=shall, kind=functional, verification=test]
+[refines=SWR-9999]
+--
+The system shall persist faults across restarts.
+--
