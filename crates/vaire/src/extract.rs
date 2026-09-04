@@ -33,11 +33,15 @@ pub struct Extraction {
 /// blocks. Unterminated `--` blocks, `====` example blocks carrying the
 /// requirement style, and indented requirement blocks are parse errors
 /// naming the file and location; none of them ever produces a record.
+/// So are attribute-line candidates whose quotes never balance, and
+/// requirement anchors that no extracted record covers: both mean acdc
+/// would silently drop or corrupt the requirement.
 pub fn extract(file: &str, source: &str) -> crate::Result<Vec<Record>> {
+    let lines = line_table(source);
+    reject_unbalanced_quotes(file, source, &lines)?;
     let doc =
         parse(source, &Default::default()).map_err(|e| Error::Parse(format!("{file}: {e}")))?;
     let doc = doc.document();
-    let lines = line_table(source);
     let mut blocks = Vec::new();
     collect_requirement_blocks(&doc.blocks, file, &lines, &mut blocks)?;
     let mut records = Vec::new();
@@ -45,6 +49,7 @@ pub fn extract(file: &str, source: &str) -> crate::Result<Vec<Record>> {
         records.push(build_record(file, source, &lines, block)?);
     }
     reject_indented_requirement(file, source, &lines)?;
+    reject_lost_requirements(file, source, &lines, &records)?;
     Ok(records)
 }
 
@@ -278,6 +283,85 @@ fn reject_indented_requirement(
                 "{file}: indented requirement block at {}: acdc cannot parse indented \
                  open blocks; requirements and their attribute lines must not be indented",
                 at(lines, j)
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Reject attribute-line candidates whose quotes never balance: under the
+/// parser's contract (`\` escapes inside quotes), a `"` still open at end of
+/// line leaves the quoted value unterminated, and acdc then attaches the
+/// attribute list to the wrong block, silently dropping or corrupting the
+/// requirement.
+fn reject_unbalanced_quotes(
+    file: &str,
+    source: &str,
+    lines: &[(usize, usize)],
+) -> crate::Result<()> {
+    for (idx, &span) in lines.iter().enumerate() {
+        if !is_attr_line(span, source) || !quote_left_open(span, source) {
+            continue;
+        }
+        return Err(Error::Parse(format!(
+            "{file}: unbalanced quotes in attribute line at {}: a `\"` opens a \
+             quoted value that never closes; balance and escape quoted values, \
+             e.g. rationale=\"a\\\"b, c]\"",
+            at(lines, idx)
+        )));
+    }
+    Ok(())
+}
+
+/// Whether a `"` is still open at end of the line `(s, e)`, scanning with the
+/// parser's quote semantics: inside quotes `\` escapes the next character,
+/// outside them it is literal.
+fn quote_left_open((s, e): (usize, usize), source: &str) -> bool {
+    #[expect(
+        clippy::string_slice,
+        reason = "line-table bounds fall on \n or the \r before it, always char boundaries"
+    )]
+    let line = &source[s..e];
+    let mut in_quotes = false;
+    let mut escaped = false;
+    for c in line.chars() {
+        if in_quotes && escaped {
+            escaped = false;
+        } else {
+            match c {
+                '\\' if in_quotes => escaped = true,
+                '"' => in_quotes = !in_quotes,
+                _ => {}
+            }
+        }
+    }
+    in_quotes
+}
+
+/// Every requirement-marking attribute line must land inside some record's
+/// span. acdc attaches an attribute list to whatever block follows it, so a
+/// stray line between the run and the `--` delimiter silently re-homes the
+/// requirement onto a paragraph and the record vanishes; fail loudly on any
+/// anchor acdc failed to turn into a record.
+fn reject_lost_requirements(
+    file: &str,
+    source: &str,
+    lines: &[(usize, usize)],
+    records: &[Record],
+) -> crate::Result<()> {
+    for (idx, &span) in lines.iter().enumerate() {
+        if !is_attr_line(span, source) || !marks_requirement(span, source) {
+            continue;
+        }
+        let covered = records
+            .iter()
+            .any(|r| r.span.start <= span.0 && span.1 <= r.span.end);
+        if !covered {
+            return Err(Error::Parse(format!(
+                "{file}: requirement anchor at {} produced no requirement record; the \
+                 attribute lines must sit directly above a `--` open delimiter with \
+                 no stray line between them",
+                at(lines, idx)
             )));
         }
     }

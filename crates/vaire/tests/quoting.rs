@@ -218,6 +218,68 @@ fn render_and_parse_are_stable_for_tricky_values() {
     }
 }
 
+/// The defect: a stray unbracketed line carrying an unbalanced quote (old
+/// broken-emit output, or hand-written) makes acdc re-home the requirement's
+/// attribute list onto a paragraph, and the whole requirement vanished as a
+/// silent empty record set.
+#[test]
+fn an_unbalanced_quote_stray_line_is_a_loud_parse_error_not_silence() {
+    let source = "[requirement#Q-1]\nrationale=a\"b, c]\n--\nbody\n--\n";
+    let error = vaire::extract::extract("t.adoc", source).unwrap_err();
+    let message = error.to_string();
+    assert!(matches!(error, vaire::Error::Parse(_)), "{message}");
+    assert!(message.contains("t.adoc"), "names the file: {message}");
+    assert!(message.contains("line 1"), "gives the line: {message}");
+    assert!(
+        message.contains("byte offset 0"),
+        "gives the offset: {message}"
+    );
+    assert!(
+        message.contains("no requirement record"),
+        "states the loss: {message}"
+    );
+}
+
+/// The mirrored broken-emit shape, fully quoted: the quote opens, closes
+/// early, and opens again, so the line can never parse as one value.
+#[test]
+fn the_mirrored_broken_emit_output_is_a_loud_parse_error() {
+    let source = "[requirement#Q-1]\n[rationale=\"a\"b, c]\"]\n--\nbody\n--\n";
+    let error = vaire::extract::extract("t.adoc", source).unwrap_err();
+    let message = error.to_string();
+    assert!(matches!(error, vaire::Error::Parse(_)), "{message}");
+    assert!(message.contains("t.adoc"), "names the file: {message}");
+    assert!(message.contains("line 2"), "gives the line: {message}");
+    assert!(
+        message.contains("byte offset 18"),
+        "gives the offset: {message}"
+    );
+    assert!(message.contains("unbalanced"), "{message}");
+    assert!(
+        message.contains("rationale=\"a\\\"b, c]\""),
+        "hints the fix: {message}"
+    );
+}
+
+/// A requirement anchor acdc never turned into a record is a loud parse
+/// error, wherever the attachment broke.
+#[test]
+fn an_anchor_without_a_block_is_a_loud_parse_error() {
+    for source in [
+        "[requirement#Q-1]\nrationale=abc\n--\nbody\n--\n",
+        "[requirement#Q-1]\nrationale=\"a\"b, c]\"\n--\nbody\n--\n",
+        "[requirement#Q-1]\n",
+    ] {
+        let error = vaire::extract::extract("t.adoc", source).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("line 1"), "{message}");
+        assert!(
+            message.contains("no requirement record"),
+            "states the loss: {message}"
+        );
+    }
+}
+
 #[test]
 fn corpus_attribute_lines_render_back_to_their_raw_bytes() {
     for name in ["seed.adoc", "misc.adoc", "traces.adoc", "crlf.adoc"] {
