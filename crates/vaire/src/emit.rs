@@ -52,8 +52,10 @@ pub struct Edit {
 /// id is absent from the file (ids are immutable), its byte span changed
 /// (spans are bookkeeping and never editable), its block delimiter or
 /// `body_raw` changed, its attribute-line count changed, its id attribute
-/// item was rewritten, or an attribute line it wants to rewrite no longer
-/// holds the bytes its `raw` carried at extraction time — refresh the JSON
+/// item was rewritten, its edited items cannot be rendered as one
+/// single-line attribute (a line break inside a value, for example), or an
+/// attribute line it wants to rewrite no longer holds the bytes its `raw`
+/// carried at extraction time — refresh the JSON
 /// with `vaire extract` against the file being edited.
 pub fn plan(json: &str, path: &str) -> Result<Vec<Edit>> {
     let records: Vec<Record> = serde_json::from_str(json)?;
@@ -128,7 +130,7 @@ pub fn plan(json: &str, path: &str) -> Result<Vec<Edit>> {
                     start: have.start,
                     end: have.end,
                     old: have.raw.clone(),
-                    new: render_attr_line(&want.items),
+                    new: render_attr_line(&want.items)?,
                 });
             }
         }

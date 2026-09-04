@@ -345,6 +345,13 @@ fn parse_items(line: &str) -> Vec<Item> {
             let s = s.trim();
             if let Some(id) = s.strip_prefix('#') {
                 vec![Item::Id(id.to_owned())]
+            } else if let Some((name, value)) = s.split_once('=') {
+                // A named entry wins over the positional shorthand: `k=v#x`
+                // is a value containing `#`, not `Style(k=v)` plus `Id(x)`.
+                vec![Item::Kv {
+                    name: name.trim().to_owned(),
+                    value: unquote(value.trim()),
+                }]
             } else if let Some((style, id)) = s.split_once('#') {
                 // AsciiDoc shorthand `[style#id]`: style and id share one item.
                 let mut items = Vec::new();
@@ -353,11 +360,6 @@ fn parse_items(line: &str) -> Vec<Item> {
                 }
                 items.push(Item::Id(id.to_owned()));
                 items
-            } else if let Some((name, value)) = s.split_once('=') {
-                vec![Item::Kv {
-                    name: name.trim().to_owned(),
-                    value: unquote(value.trim()),
-                }]
             } else {
                 vec![Item::Style(s.to_owned())]
             }
@@ -365,61 +367,150 @@ fn parse_items(line: &str) -> Vec<Item> {
         .collect()
 }
 
+/// Split on commas outside a quoted value. Inside quotes `\` escapes the
+/// next character, so `\"` does not close the quote; outside quotes a
+/// backslash is an ordinary character.
 fn split_top_level(s: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
+    let mut escaped = false;
     for c in s.chars() {
-        match c {
-            '"' => {
-                in_quotes = !in_quotes;
-                current.push(c);
+        if in_quotes && escaped {
+            escaped = false;
+        } else {
+            match c {
+                '\\' if in_quotes => escaped = true,
+                '"' => in_quotes = !in_quotes,
+                ',' if !in_quotes => {
+                    parts.push(std::mem::take(&mut current));
+                    continue;
+                }
+                _ => {}
             }
-            ',' if !in_quotes => parts.push(std::mem::take(&mut current)),
-            _ => current.push(c),
         }
+        current.push(c);
     }
     parts.push(current);
     parts
 }
 
-fn unquote(s: &str) -> String {
-    s.strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .unwrap_or(s)
-        .to_owned()
+/// Decode a parsed value. A fully quoted value (`"…"`) loses its quotes and
+/// decodes its escapes: `\\` → `\`, `\"` → `"`, and any other `\x` stays
+/// `\x` so hand-written values such as `C:\path` survive. Anything else is
+/// literal — bare backslashes are ordinary characters and unbalanced quotes
+/// pass through — keeping older unescaped sources parsing unchanged.
+fn unquote(value: &str) -> String {
+    let Some(inner) = value.strip_prefix('"').and_then(|s| s.strip_suffix('"')) else {
+        return value.to_owned();
+    };
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some(escaped @ ('"' | '\\')) => out.push(escaped),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            },
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
-/// Render items back into an attribute line. Values containing `,`, `]`, or
-/// `"` are quoted.
-pub fn render_attr_line(items: &[Item]) -> String {
+/// Render items back into an attribute line.
+///
+/// A value is quoted — and escaped inside the quotes (`\` → `\\`, `"` →
+/// `\"`) — when it contains `"`, `,`, `]`, or any whitespace: quotes protect
+/// `,` and `]` from the top-level splitter, and unquoted values are trimmed
+/// by the parser, so padding would not survive. Any other value is plain. A
+/// rendered line re-parses to exactly the items it was rendered from, so a
+/// value with no single-line representation — one carrying a line break —
+/// is rejected instead of being emitted ambiguously.
+pub fn render_attr_line(items: &[Item]) -> crate::Result<String> {
     let mut out = String::from("[");
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
+    let mut iter = items.iter().peekable();
+    let mut first = true;
+    while let Some(item) = iter.next() {
+        if !first {
             out.push_str(", ");
         }
+        first = false;
         match item {
-            Item::Style(s) => out.push_str(s),
+            Item::Style(s) => {
+                if s.contains(['\n', '\r']) {
+                    return Err(line_break_error("style"));
+                }
+                out.push_str(s);
+                // The positional shorthand `[style#id]` parses to a Style
+                // followed by an Id; render the pair back as one token.
+                if let Some(Item::Id(id)) = iter.peek() {
+                    if id.contains(['\n', '\r']) {
+                        return Err(line_break_error("id anchor"));
+                    }
+                    out.push('#');
+                    out.push_str(id);
+                    iter.next();
+                }
+            }
             Item::Id(id) => {
+                if id.contains(['\n', '\r']) {
+                    return Err(line_break_error("id anchor"));
+                }
                 out.push('#');
                 out.push_str(id);
             }
             Item::Kv { name, value } => {
+                for (what, text) in [("name", name.as_str()), ("value", value.as_str())] {
+                    if text.contains(['\n', '\r']) {
+                        return Err(line_break_error(&format!("attribute `{name}` {what}")));
+                    }
+                }
+                if name.contains(['=', ',', '"']) {
+                    return Err(Error::Unrepresentable(format!(
+                        "attribute name `{name}` cannot be rendered: it contains \
+                         `=`, `,`, or `\"`"
+                    )));
+                }
                 out.push_str(name);
                 out.push('=');
-                if value.contains(',') || value.contains(']') || value.contains('"') {
+                if value.contains(['"', ',', ']']) || value.chars().any(char::is_whitespace) {
                     out.push('"');
-                    out.push_str(value);
+                    for c in value.chars() {
+                        match c {
+                            '"' => out.push_str("\\\""),
+                            '\\' => out.push_str("\\\\"),
+                            _ => out.push(c),
+                        }
+                    }
                     out.push('"');
                 } else {
                     out.push_str(value);
                 }
             }
-            Item::Raw(r) => out.push_str(r),
+            Item::Raw(r) => {
+                if r.contains(['\n', '\r']) {
+                    return Err(line_break_error("raw item"));
+                }
+                out.push_str(r);
+            }
         }
     }
     out.push(']');
-    out
+    Ok(out)
+}
+
+/// Attribute lines are single-line: a payload with CR or LF has no
+/// representation on one.
+fn line_break_error(what: &str) -> Error {
+    Error::Unrepresentable(format!(
+        "{what} contains a line break; attribute lines are single-line and \
+         cannot represent CR or LF"
+    ))
 }
 
 /// Expose the delimiter shape acdc saw, for tests and the spec.
