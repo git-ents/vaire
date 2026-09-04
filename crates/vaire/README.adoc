@@ -13,9 +13,25 @@ vaire show <file> <id>      one requirement, human-readable (stdout)
 `extract -c` emits a compact (single-line) JSON document. `emit -n` shows the planned rewrites without
 writing; `emit --diff` shows them as `-`/`+` lines and then writes. `check -q`
 suppresses per-violation output and reports by exit code only. `vaire list
-<file...>` renders an id/kind/modality/status/verification table. Output is
-colored when the target is a terminal (`anstream` auto-detection) and plain
-when piped.
+<file...>` renders an id/kind/modality/status/verification table, one section
+per file, in file-argument order and source order within each file. Its
+filters are optional and combinable with AND semantics — `--id PREFIX` (a
+prefix match), `--attr KEY=VALUE` (exact match on merged attributes,
+repeatable), `--modality shall|should|may`, `--status VALUE`,
+`--verification VALUE`, `--traces ID` (records whose merged
+`refines`/`derives-from`/`satisfies` values reference each id; repeatable,
+comma-separated), and `--file PATH` (list only these positional paths; the
+others are not read). All matching is case-sensitive exact, so `--status
+Draft` matches nothing. Unknown values with a closed vocabulary (such as
+`--modality maybe`) are rejected with the valid values listed; open
+vocabularies (status, verification) yield an empty result instead.
+`--format json` (pretty) and `--format compact` (single line) write a JSON
+array of `file`/`id`/`span`/`modality`/`kind`/`status`/`verification`/
+`statement` objects — `file` is the path as passed, `span` the record's byte
+range, absent attributes are `null`; `--format tsv` writes the same fields
+tab-separated with a header row. Machine output never carries color; the
+table is colored when the target is a terminal (`anstream` auto-detection)
+and plain when piped.
 
 == Round-trip contract
 

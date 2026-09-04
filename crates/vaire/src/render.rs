@@ -66,7 +66,7 @@ pub fn diff(
 pub fn table(
     out: &mut impl Write,
     path: &str,
-    records: &[Record],
+    records: &[&Record],
     choice: ColorChoice,
 ) -> io::Result<()> {
     writeln!(out, "{}", styled(&format!("--- {path}"), DIM_STYLE, choice))?;

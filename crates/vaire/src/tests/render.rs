@@ -35,7 +35,7 @@ fn violation_line_with_color_is_styled() {
 #[test]
 fn table_lists_fields_and_statement() {
     let records = extract("seed.adoc", SOURCE).unwrap();
-    let rendered = render(|out| table(out, "seed.adoc", &records, ColorChoice::Never));
+    let rendered = render(|out| table(out, "seed.adoc", &refs(&records), ColorChoice::Never));
     assert!(rendered.starts_with("--- seed.adoc\n"), "got {rendered:?}");
     assert!(
         rendered.contains("SWR-0001  functional  shall  draft  test"),
@@ -50,7 +50,7 @@ fn table_lists_fields_and_statement() {
 #[test]
 fn table_colors_modality_by_strength() {
     let records = extract("seed.adoc", SOURCE).unwrap();
-    let rendered = render(|out| table(out, "seed.adoc", &records, ColorChoice::AlwaysAnsi));
+    let rendered = render(|out| table(out, "seed.adoc", &refs(&records), ColorChoice::AlwaysAnsi));
     assert!(
         rendered.contains("\x1b[1m\x1b[31mshall\x1b[0m"),
         "got {rendered:?}"
@@ -86,4 +86,9 @@ fn render(f: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>) -> String {
     let mut out = Vec::new();
     f(&mut out).unwrap();
     String::from_utf8(out).unwrap()
+}
+
+/// The borrowed-record slice shape `table` now takes.
+fn refs(records: &[vaire::Record]) -> Vec<&vaire::Record> {
+    records.iter().collect()
 }
