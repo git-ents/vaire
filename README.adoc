@@ -1,0 +1,14 @@
+= 🪵 `vaire`
+:abstract: // TODO
+
+== Motivation
+
+// TODO
+
+== Installation
+
+// TODO
+
+== Usage
+
+// TODO
