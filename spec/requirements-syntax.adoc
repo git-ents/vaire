@@ -154,6 +154,15 @@ style         = "requirement"
 
 * First paragraph of the body: the normative statement.
 * Prose carries the modality keyword; validation enforces agreement (V4).
+* The keyword match is ASCII case-insensitive (`SHALL` agrees with
+  `modality=shall`) and word-bounded: neighboring ASCII alphanumerics
+  disqualify a hit, so `marshaled` is not `shall`, while trailing
+  punctuation (`shall,`) still counts.
+* The keyword may sit on any line of the leading paragraph; the paragraph's
+  lines are joined before matching.
+* AsciiDoc inline markup is not interpreted: a keyword inside a code span or
+  emphasis still counts, so a literal `shall` beside a real one is a
+  compound statement (V5).
 * One modality keyword per statement (V5).
 * Nested blocks follow, with roles:
 
@@ -186,6 +195,8 @@ style         = "requirement"
 * Downward links live in the artifacts that implement or verify.
 * Cross-file resolution: trace targets resolve against the ids of the whole
   file set passed to `check`.
+* A trace to the requirement's own id resolves (no V2) but does not make the
+  requirement a parent: an unverified self-tracing leaf still fails V3.
 * Dangling target: error (V2).
 * Cyclic trace graphs: forbidden by this spec; the MVP does not detect cycles
   (see open questions).
@@ -285,6 +296,36 @@ target file; body edits via `emit`
 |===
 
 * All rules are errors; any violation exits nonzero.
+* One violation per offending item: each unresolved trace target raises its
+  own V2 and each unknown attribute name its own V6; a repeated id raises
+  V1 once, on the later occurrence (file-argument order, then source order).
+
+.Checking files (`vaire check`)
+* `check` validates exactly the files named on the command line; id
+  uniqueness and trace targets resolve against that whole set. Includes are
+  not followed: callers pass the member files themselves.
+* Violation order is deterministic: file-argument order, then ascending
+  span start, then rule code V1–V6; full ties keep source order.
+* Locations: each violation carries a raw byte `offset` into the file as
+  read and a 1-based `line` counted over `\n` terminators, so LF and CRLF
+  files report the same line numbers while CRLF offsets sit ahead of their
+  LF equivalents by the `\r` bytes before them.
+* Output:
+** Default: one violation line per violation, on stderr.
+** `-q`/`--quiet`: no violation lines; the exit code is the only signal.
+** `--summary`: two lines on stdout — totals (`checked N files, N
+   requirements, N violations`) and per-rule counts (`violations by rule:
+   V1=0 ... V6=0`) in fixed rule order. Violations stay on stderr; with
+   `-q` only the summary prints. The summary always counts every violation,
+   whatever `--rule` displays.
+** `--format json` / `--format compact`: one report object on stdout, never
+   colored: `file_count`, `requirement_count`, `violation_count` (every
+   violation, whatever `--rule` displays), and `violations` — each with
+   `rule`, `file`, `id`, `message`, `line`, and `offset`. `--quiet` leaves
+   the report untouched. Conflicts with `--summary`.
+** `--rule V1..V6` (repeatable): limits the violations displayed — human
+   lines and the JSON `violations` array — to the named rules. The exit
+   code, `--summary`, and `violation_count` always reflect every violation.
 
 == 11. Interop mapping
 
@@ -422,9 +463,7 @@ The interlock shall stop motion within 50 ms of a trip signal.
 
 * Quoting for attribute values containing `"` itself?
 * Cycle detection over the trace graph: specified, not yet enforced.
-* Does `check` follow `include::` itself, or must callers pass member files?
 * Is `status` vocabulary closed, or user-extensible?
-* Multi-line statements: which line carries the modality keyword check?
 * `rationale` as attribute vs `.rationale` block: allow both, or one?
 * Indented requirements inside list items: contribute span support upstream
   to acdc, or forbid forever?

@@ -48,6 +48,21 @@ pub(crate) enum Command {
         /// Suppress per-violation output; report only the exit code.
         #[arg(long, short = 'q')]
         quiet: bool,
+        /// Print a summary on stdout: file, requirement, and violation
+        /// totals, then per-rule counts V1–V6 in fixed order. The summary
+        /// always counts every violation, whatever `--rule` displays;
+        /// violations stay on stderr, and with `--quiet` only the summary
+        /// prints.
+        #[arg(long, conflicts_with = "format")]
+        summary: bool,
+        /// Write one machine-readable report to stdout instead of
+        /// per-violation lines; never colored, even on a terminal.
+        #[arg(long, value_enum)]
+        format: Option<CheckFormat>,
+        /// Only display violations of these rules; repeatable. The exit
+        /// code and `--summary` still reflect every violation.
+        #[arg(long = "rule", value_name = "RULE", value_enum)]
+        rules: Vec<RuleCode>,
     },
     /// List requirements per file in a table.
     ///
@@ -143,6 +158,53 @@ pub(crate) enum Format {
     Compact,
     /// Tab-separated rows with a header; cells flatten tabs and line breaks.
     Tsv,
+}
+
+/// Report structure of `check`; `--format` selects the report, never color.
+/// The default (no `--format`) is one violation line per violation on stderr.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum CheckFormat {
+    /// Pretty-printed JSON report object.
+    Json,
+    /// Single-line JSON report, same object as `json`.
+    Compact,
+}
+
+/// A validation rule selectable by `--rule`, addressed by its code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum RuleCode {
+    /// V1 — id uniqueness across the file set.
+    #[value(name = "V1")]
+    V1,
+    /// V2 — trace targets resolve to an id in the file set.
+    #[value(name = "V2")]
+    V2,
+    /// V3 — leaf requirements carry a verification method.
+    #[value(name = "V3")]
+    V3,
+    /// V4 — prose modality agrees with the modality attribute.
+    #[value(name = "V4")]
+    V4,
+    /// V5 — one modality keyword per normative statement.
+    #[value(name = "V5")]
+    V5,
+    /// V6 — named attributes are in the vocabulary.
+    #[value(name = "V6")]
+    V6,
+}
+
+impl RuleCode {
+    /// The library rule this code selects.
+    pub(crate) fn rule(self) -> vaire::check::ValidationRule {
+        match self {
+            Self::V1 => vaire::check::ValidationRule::DuplicateId,
+            Self::V2 => vaire::check::ValidationRule::UnresolvedTrace,
+            Self::V3 => vaire::check::ValidationRule::MissingVerification,
+            Self::V4 => vaire::check::ValidationRule::ModalityDisagreement,
+            Self::V5 => vaire::check::ValidationRule::CompoundStatement,
+            Self::V6 => vaire::check::ValidationRule::UnknownAttribute,
+        }
+    }
 }
 
 /// Modalities accepted by `--modality`, matched exactly.

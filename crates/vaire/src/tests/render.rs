@@ -79,6 +79,8 @@ fn violation() -> Violation {
         file: "seed.adoc".to_owned(),
         id: "SWR-0001".to_owned(),
         message: "modality disagrees: prose says must".to_owned(),
+        offset: 0,
+        line: None,
     }
 }
 

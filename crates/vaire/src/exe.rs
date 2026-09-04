@@ -5,8 +5,9 @@ use std::io::{self, Write};
 use anstream::AutoStream;
 use serde::Serialize;
 
-use crate::cli::{Command, Format, ListFilter};
+use crate::cli::{CheckFormat, Command, Format, ListFilter, RuleCode};
 use crate::render;
+use vaire::check::ValidationRule;
 
 /// Execute the selected command-line operation.
 pub(crate) fn run(command: Command) -> Result<(), Fail> {
@@ -18,7 +19,13 @@ pub(crate) fn run(command: Command) -> Result<(), Fail> {
             dry_run,
             diff,
         } => emit(&json, &file, dry_run, diff),
-        Command::Check { files, quiet } => check(&files, quiet),
+        Command::Check {
+            files,
+            quiet,
+            summary,
+            format,
+            rules,
+        } => check(&files, quiet, summary, format, &rules),
         Command::List { files, filter } => list(&files, &filter),
         Command::Show { file, id } => show(&file, &id),
         Command::Edit {
@@ -84,19 +91,138 @@ fn emit(json: &str, file: &str, dry_run: bool, show_diff: bool) -> Result<(), Fa
     Ok(())
 }
 
-fn check(files: &[String], quiet: bool) -> Result<(), Fail> {
-    let violations = vaire::check::check(files)?;
-    if violations.is_empty() {
-        return Ok(());
-    }
-    if !quiet {
-        let choice = AutoStream::choice(&io::stderr());
-        let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
-        for violation in &violations {
-            render::violation_line(&mut stderr, violation, choice)?;
+fn check(
+    files: &[String],
+    quiet: bool,
+    summary: bool,
+    format: Option<CheckFormat>,
+    rules: &[RuleCode],
+) -> Result<(), Fail> {
+    let outcome = vaire::check::check_outcome(files)?;
+    let displayed = displayed(&outcome.violations, rules);
+    match format {
+        Some(format) => print_report(files.len(), &outcome, &displayed, format)?,
+        None => {
+            if !quiet {
+                let choice = AutoStream::choice(&io::stderr());
+                let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
+                for violation in &displayed {
+                    render::violation_line(&mut stderr, violation, choice)?;
+                }
+            }
+            if summary {
+                print_summary(files.len(), outcome.requirement_count, &outcome.violations);
+            }
         }
     }
-    Err(Fail::Violations)
+    if outcome.violations.is_empty() {
+        Ok(())
+    } else {
+        Err(Fail::Violations)
+    }
+}
+
+/// Violations left after `--rule` filtering; no filter displays all.
+fn displayed<'a>(
+    violations: &'a [vaire::check::Violation],
+    rules: &[RuleCode],
+) -> Vec<&'a vaire::check::Violation> {
+    violations
+        .iter()
+        .filter(|violation| {
+            rules.is_empty() || rules.iter().any(|rule| rule.rule() == violation.rule)
+        })
+        .collect()
+}
+
+/// One violation as exposed by `check`'s machine-readable formats.
+#[derive(Serialize)]
+struct ViolationRow<'a> {
+    rule: &'a str,
+    file: &'a str,
+    id: &'a str,
+    message: &'a str,
+    /// 1-based source line; `null` when the line could not be computed.
+    line: Option<usize>,
+    /// Raw byte offset of the offending record or attribute line.
+    offset: usize,
+}
+
+/// The `check` machine-readable report.
+#[derive(Serialize)]
+struct CheckReport<'a> {
+    file_count: usize,
+    requirement_count: usize,
+    /// Every violation found, regardless of `--rule` filtering.
+    violation_count: usize,
+    /// Violations displayed after `--rule` filtering, in stable order.
+    violations: Vec<ViolationRow<'a>>,
+}
+
+/// Write the `--format json|compact` report; stdout only, never colored.
+fn print_report(
+    file_count: usize,
+    outcome: &vaire::check::CheckOutcome,
+    displayed: &[&vaire::check::Violation],
+    format: CheckFormat,
+) -> Result<(), Fail> {
+    let report = CheckReport {
+        file_count,
+        requirement_count: outcome.requirement_count,
+        violation_count: outcome.violations.len(),
+        violations: displayed
+            .iter()
+            .map(|violation| ViolationRow {
+                rule: violation.rule.code(),
+                file: &violation.file,
+                id: &violation.id,
+                message: &violation.message,
+                line: violation.line,
+                offset: violation.offset,
+            })
+            .collect(),
+    };
+    let json = match format {
+        CheckFormat::Json => serde_json::to_string_pretty(&report),
+        CheckFormat::Compact => serde_json::to_string(&report),
+    }
+    .map_err(|e| Fail::Message(e.to_string()))?;
+    println!("{json}");
+    Ok(())
+}
+
+/// Write the `--summary` report: totals, then per-rule counts V1–V6 in code
+/// order. Always reflects every violation, whatever `--rule` displays.
+fn print_summary(
+    file_count: usize,
+    requirement_count: usize,
+    violations: &[vaire::check::Violation],
+) {
+    println!(
+        "checked {}, {}, {}",
+        plural("file", file_count),
+        plural("requirement", requirement_count),
+        plural("violation", violations.len()),
+    );
+    let by_rule = |rule: ValidationRule| violations.iter().filter(|v| v.rule == rule).count();
+    println!(
+        "violations by rule: V1={} V2={} V3={} V4={} V5={} V6={}",
+        by_rule(ValidationRule::DuplicateId),
+        by_rule(ValidationRule::UnresolvedTrace),
+        by_rule(ValidationRule::MissingVerification),
+        by_rule(ValidationRule::ModalityDisagreement),
+        by_rule(ValidationRule::CompoundStatement),
+        by_rule(ValidationRule::UnknownAttribute),
+    );
+}
+
+/// `1 file` / `3 files`.
+fn plural(noun: &str, n: usize) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
 }
 
 fn list(files: &[String], filter: &ListFilter) -> Result<(), Fail> {

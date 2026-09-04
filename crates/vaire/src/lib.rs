@@ -16,7 +16,7 @@ pub mod emit;
 pub mod extract;
 pub mod show;
 
-pub use check::{ValidationRule, check};
+pub use check::{CheckOutcome, ValidationRule, check, check_outcome};
 pub use extract::extract;
 pub use show::show;
 
