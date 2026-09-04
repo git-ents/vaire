@@ -31,6 +31,23 @@ Written after the MVP; reflects what `crates/vaire` accepts.
   (unspecified in the AsciiDoc Language spec; Asciidoctor is more permissive).
 * The block span reported by acdc starts at the first attribute line, not at
   the delimiter.
+* Extraction resolves block locations as source *lines*, never as acdc byte
+  offsets: acdc reports those in preprocessed coordinates, where `\r\n` has
+  already become `\n` and trailing whitespace is gone. LF, CRLF, and mixed
+  line endings therefore extract identically, and `body_raw` keeps the raw
+  bytes between the delimiter lines, terminators included as written. A lone
+  `\r` is not a line terminator; a file using only `\r` has no requirement
+  lines.
+* Unterminated `--` blocks are parse errors naming the file, line, and byte
+  offset; no record is fabricated. acdc reads `--` immediately followed by
+  `--` as the start of a nested open block, so an empty block is rejected the
+  same way (a block holding one blank line is valid).
+* A `requirement`-style attribute line above a `====` example block is a
+  parse error naming the file and location: extraction fails loudly instead
+  of fabricating a record from a block that cannot carry nested examples.
+* Indented requirements stay unsupported (acdc cannot parse them): the shape
+  "attribute line carrying a requirement style or id anchor, then an
+  indented `--`" is reported as a parse error naming the file and location.
 
 == 3. Identity
 
@@ -202,7 +219,7 @@ style         = "requirement"
     }
   ],
   "delim": "--",
-  "body_raw": "raw body bytes between the delimiters"
+  "body_raw": "raw body bytes between the delimiters, terminators included as written"
 }
 ----
 

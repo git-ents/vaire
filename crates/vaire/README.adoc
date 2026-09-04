@@ -44,10 +44,11 @@ raw text. vaire recovers the individual `[...]` lines by re-scanning from the
 block's span; this is the one gap-filler.
 
 |Source spans
-|Exposed. Every block carries a `Location` with byte-accurate
-`absolute_start`/`absolute_end` plus line/column, and delimited blocks carry
-`open_delimiter_location`/`close_delimiter_location`. No upstream
-contribution needed.
+|Exposed. Every block carries a `Location` with line/column plus byte
+offsets, and delimited blocks carry
+`open_delimiter_location`/`close_delimiter_location`. The line numbers are
+correct in the original source; the byte offsets are not (see divergences),
+so vaire resolves spans from line numbers against its own line table.
 
 |Nested block roles
 |Exposed. `.rationale` / `.acceptance` / `.note` blocks inside the
@@ -60,10 +61,21 @@ requirement body parse with their roles.
   attribute line*, not at the open delimiter. Downstream tools that assume
   the span starts at the delimiter will slice the region wrong; vaire relies on the
   documented behavior.
+* `Location.absolute_start`/`absolute_end` are offsets into the *preprocessed*
+  buffer, not the caller's source: CRLF line endings are normalized to LF and
+  trailing whitespace is trimmed before the grammar runs, and the post-parse
+  remap corrects offsets only for preprocessor rewrites (includes, dropped
+  comments), never for that normalization. Line numbers are correct in every
+  case, so vaire never slices by acdc offsets.
+* An unterminated `--` open block parses successfully with
+  `close_delimiter_location` unset (and a trailing `--` immediately after an
+  opening one reads as a nested block start); vaire rejects both as parse
+  errors.
 * An indented open block with stacked attribute lines (all lines indented,
   as Asciidoctor permits inside list items) is *not* parsed as a delimited
   block: the requirement is silently invisible to `extract`. Requirements
-  MUST NOT be indented (recorded in the spec).
+  MUST NOT be indented; vaire detects the attribute-line-then-indented-`--`
+  shape and reports it as a parse error (recorded in the spec).
 * The `#ID` shorthand inside a style attribute line is consumed into the
   style context; vaire parses ids from the raw line rather than trusting
   `BlockMetadata.id` placement.

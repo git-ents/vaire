@@ -1,0 +1,11 @@
+[requirement#SWR-0306]
+[modality=shall, kind=functional, verification=analysis]
+--
+The controller shall log nested examples.
+
+.An example inside the requirement body
+[.example]
+====
+An example nested inside a requirement.
+====
+--

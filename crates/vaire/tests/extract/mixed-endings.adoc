@@ -1,0 +1,5 @@
+[requirement#SWR-0320]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall tolerate mixed line endings.
+--

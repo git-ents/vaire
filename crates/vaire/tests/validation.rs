@@ -63,7 +63,7 @@ fn each_spec_invalid_example_fails_its_rule() {
 
 #[test]
 fn clean_corpus_has_no_violations() {
-    for name in ["seed.adoc", "traces.adoc"] {
+    for name in ["seed.adoc", "traces.adoc", "crlf.adoc"] {
         let src = fs::read_to_string(format!("tests/corpus/{name}")).unwrap();
         let path = temp("clean", name, &src);
         let file = path.to_str().unwrap().to_owned();

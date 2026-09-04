@@ -26,7 +26,7 @@ fn extract_json(path: &std::path::Path) -> String {
 
 #[test]
 fn round_trip_is_byte_identical() {
-    for name in ["seed.adoc", "misc.adoc", "traces.adoc"] {
+    for name in ["seed.adoc", "misc.adoc", "traces.adoc", "crlf.adoc"] {
         let original = corpus_file(name);
         let path = temp_copy("rt", name, &original);
         let file = path.to_str().unwrap().to_owned();
@@ -55,7 +55,7 @@ fn round_trip_is_byte_identical() {
 
 #[test]
 fn records_round_trip_through_json() {
-    for name in ["seed.adoc", "misc.adoc", "traces.adoc"] {
+    for name in ["seed.adoc", "misc.adoc", "traces.adoc", "crlf.adoc"] {
         let original = corpus_file(name);
         let path = temp_copy("json", name, &original);
         let file = path.to_str().unwrap().to_owned();

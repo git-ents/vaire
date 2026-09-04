@@ -1,0 +1,4 @@
+[requirement#SWR-0321]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall never close this CRLF block.

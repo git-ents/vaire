@@ -1,0 +1,6 @@
+.Name
+[requirement#SWR-0307]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall carry a title above its attribute lines.
+--

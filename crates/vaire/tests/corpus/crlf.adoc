@@ -1,0 +1,21 @@
+[requirement#SWR-0400]
+[modality=shall, kind=functional, status=approved]
+[verification=test]
+--
+The joint controller shall publish a sample within 2 ms.
+
+.An example inside the body
+[.example]
+====
+nested example content
+====
+--
+
+[requirement#SWR-0401]
+[kind=quality, characteristic=availability, modality=shall]
+[verification=analysis]
+--
+Scale:: uninterrupted hours
+Meter:: soak test
+Must:: 500
+--

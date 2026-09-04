@@ -1,0 +1,4 @@
+[requirement#SWR-0304]
+  --
+  an indented open block acdc cannot parse
+  --

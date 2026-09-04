@@ -1,0 +1,20 @@
+[requirement#SWR-0310]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall boot within 5 s.
+--
+
+[requirement#SWR-0311]
+[modality=may, kind=interface, verification=inspection]
+--
+The debug port may be disabled.
+--
+
+[requirement#SWR-0312]
+[kind=quality, characteristic=availability, modality=shall]
+[verification=analysis]
+--
+Scale:: uninterrupted hours
+Meter:: soak test
+Must:: 500
+--

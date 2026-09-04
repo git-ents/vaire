@@ -1,0 +1,5 @@
+[requirement#SWR-0303]
+[modality=shall, kind=functional, verification=test]
+====
+The system shall be an example instead of a requirement.
+====
