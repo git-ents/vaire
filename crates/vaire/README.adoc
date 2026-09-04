@@ -7,6 +7,7 @@ surgically, check validation rules.
 vaire extract <file...>     AsciiDoc -> JSON requirement records (stdout)
 vaire emit <json> <file>    JSON -> AsciiDoc, in place
 vaire check <file...>       validation rules; nonzero exit on violation
+vaire show <file> <id>      one requirement, human-readable (stdout)
 ----
 
 `extract -c` emits a compact (single-line) JSON document. `emit -n` shows the planned rewrites without

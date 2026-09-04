@@ -19,6 +19,7 @@ pub(crate) fn run(command: Command) -> Result<(), Fail> {
         } => emit(&json, &file, dry_run, diff),
         Command::Check { files, quiet } => check(&files, quiet),
         Command::List { files } => list(&files),
+        Command::Show { file, id } => show(&file, &id),
     }
 }
 
@@ -98,6 +99,13 @@ fn list(files: &[String]) -> Result<(), Fail> {
         let records = vaire::extract::extract(file, &source)?;
         render::table(&mut stdout, file, &records, choice)?;
     }
+    Ok(())
+}
+
+fn show(file: &str, id: &str) -> Result<(), Fail> {
+    let choice = AutoStream::choice(&io::stdout());
+    let mut stdout = AutoStream::new(Box::new(io::stdout()) as Box<dyn Write>, choice);
+    vaire::show::show(&mut stdout, file, id, choice)?;
     Ok(())
 }
 

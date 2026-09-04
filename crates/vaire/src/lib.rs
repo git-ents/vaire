@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 pub mod check;
 pub mod emit;
 pub mod extract;
+pub mod show;
 
 pub use check::{ValidationRule, check};
 pub use extract::extract;
+pub use show::show;
 
 #[derive(Debug)]
 pub enum Error {
@@ -22,6 +24,8 @@ pub enum Error {
     Json(serde_json::Error),
     Unrepresentable(String),
     Validation(String),
+    /// A file or record the caller named could not be resolved to exactly one target.
+    Missing(String),
 }
 
 impl fmt::Display for Error {
@@ -32,6 +36,7 @@ impl fmt::Display for Error {
             Error::Json(e) => write!(f, "json error: {e}"),
             Error::Unrepresentable(m) => write!(f, "unrepresentable: {m}"),
             Error::Validation(m) => write!(f, "{m}"),
+            Error::Missing(m) => write!(f, "{m}"),
         }
     }
 }

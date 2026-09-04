@@ -55,4 +55,11 @@ pub(crate) enum Command {
         #[arg(required = true)]
         files: Vec<String>,
     },
+    /// Show one requirement in human-oriented form.
+    Show {
+        /// The AsciiDoc file containing the requirement.
+        file: String,
+        /// The requirement id to show.
+        id: String,
+    },
 }
