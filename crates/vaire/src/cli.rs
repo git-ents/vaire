@@ -62,4 +62,21 @@ pub(crate) enum Command {
         /// The requirement id to show.
         id: String,
     },
+    /// Set attributes on one requirement directly in its source file.
+    Edit {
+        /// The AsciiDoc file containing the requirement.
+        file: String,
+        /// The requirement id to edit.
+        id: String,
+        /// Attribute assignments; each key must already be present in the
+        /// requirement's attribute lines.
+        #[arg(long = "set", value_name = "KEY=VALUE", required = true)]
+        sets: Vec<String>,
+        /// Show the planned rewrites without writing the file.
+        #[arg(long, short = 'n', conflicts_with = "diff")]
+        dry_run: bool,
+        /// Show the planned rewrites as a diff, then write the file.
+        #[arg(long)]
+        diff: bool,
+    },
 }

@@ -20,6 +20,13 @@ pub(crate) fn run(command: Command) -> Result<(), Fail> {
         Command::Check { files, quiet } => check(&files, quiet),
         Command::List { files } => list(&files),
         Command::Show { file, id } => show(&file, &id),
+        Command::Edit {
+            file,
+            id,
+            sets,
+            dry_run,
+            diff,
+        } => edit(&file, &id, &sets, dry_run, diff),
     }
 }
 
@@ -106,6 +113,36 @@ fn show(file: &str, id: &str) -> Result<(), Fail> {
     let choice = AutoStream::choice(&io::stdout());
     let mut stdout = AutoStream::new(Box::new(io::stdout()) as Box<dyn Write>, choice);
     vaire::show::show(&mut stdout, file, id, choice)?;
+    Ok(())
+}
+
+fn edit(
+    file: &str,
+    id: &str,
+    raw_sets: &[String],
+    dry_run: bool,
+    show_diff: bool,
+) -> Result<(), Fail> {
+    let sets = raw_sets
+        .iter()
+        .map(|raw| vaire::edit::Set::parse(raw))
+        .collect::<vaire::Result<Vec<_>>>()?;
+    let edits = vaire::edit::plan(file, id, &sets)?;
+    let choice = AutoStream::choice(&io::stderr());
+    let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
+    if dry_run || show_diff {
+        render::diff(&mut stderr, file, &edits, choice)?;
+    }
+    if edits.is_empty() {
+        writeln!(stderr, "no changes")?;
+        return Ok(());
+    }
+    if !dry_run {
+        vaire::edit::edit(file, id, &sets)?;
+        for set in &sets {
+            println!("edited {file}: {id}: {}", set.key);
+        }
+    }
     Ok(())
 }
 

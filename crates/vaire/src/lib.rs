@@ -2,13 +2,16 @@
 //!
 //! `extract` produces JSON records located by byte spans in the source file.
 //! `emit` splices edited attribute lines back into the original bytes; every
-//! byte outside an edited attribute line passes through untouched.
+//! byte outside an edited attribute line passes through untouched. `edit`
+//! sets named attributes on one requirement in place through the same
+//! machinery.
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 pub mod check;
+pub mod edit;
 pub mod emit;
 pub mod extract;
 pub mod show;

@@ -117,7 +117,7 @@ fn render(
 }
 
 /// `line N (byte M)` for a byte offset taken from a record span.
-fn location(source: &str, offset: usize) -> String {
+pub(crate) fn location(source: &str, offset: usize) -> String {
     format!("line {} (byte {offset})", line_number(source, offset))
 }
 
