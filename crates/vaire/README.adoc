@@ -9,6 +9,13 @@ vaire emit <json> <file>    JSON -> AsciiDoc, in place
 vaire check <file...>       validation rules; nonzero exit on violation
 ----
 
+`extract -c` emits a compact (single-line) JSON document. `emit -n` shows the planned rewrites without
+writing; `emit --diff` shows them as `-`/`+` lines and then writes. `check -q`
+suppresses per-violation output and reports by exit code only. `vaire list
+<file...>` renders an id/kind/modality/status/verification table. Output is
+colored when the target is a terminal (`anstream` auto-detection) and plain
+when piped.
+
 == Round-trip contract
 
 `extract` then `emit` with an unmodified record set is byte-identical to the
