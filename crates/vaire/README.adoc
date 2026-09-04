@@ -1,0 +1,83 @@
+= vaire
+
+Requirement records in AsciiDoc: extract to JSON, emit edits back
+surgically, check validation rules.
+
+----
+vaire extract <file...>     AsciiDoc -> JSON requirement records (stdout)
+vaire emit <json> <file>    JSON -> AsciiDoc, in place
+vaire check <file...>       validation rules; nonzero exit on violation
+----
+
+== Round-trip contract
+
+`extract` then `emit` with an unmodified record set is byte-identical to the
+input. Non-requirement content is never reserialized: `emit` splices byte
+ranges of individual attribute lines into the original bytes; titles, prose,
+includes, attribute entries, comments, bodies, delimiters, and whitespace
+pass through untouched. Editing one field rewrites only the line that field
+lives on. `emit(extract(emit(extract(x)))) == emit(extract(x))`.
+
+== Does acdc expose what is needed?
+
+Yes, for the most part. Verified against `acdc-parser` 0.9.0
+(git rev `02a9c99`):
+
+[cols="2,3"]
+|===
+|Capability |Finding
+
+|Block styles
+|Exposed. `BlockMetadata.style` carries `requirement` from
+`[requirement#ID]` on a `--` open block.
+
+|Stacked attribute lines
+|Merged values are exposed (`BlockMetadata.attributes`), but *not* per-line
+raw text. vaire recovers the individual `[...]` lines by re-scanning from the
+block's span; this is the one gap-filler.
+
+|Source spans
+|Exposed. Every block carries a `Location` with byte-accurate
+`absolute_start`/`absolute_end` plus line/column, and delimited blocks carry
+`open_delimiter_location`/`close_delimiter_location`. No upstream
+contribution needed.
+
+|Nested block roles
+|Exposed. `.rationale` / `.acceptance` / `.note` blocks inside the
+requirement body parse with their roles.
+|===
+
+== Divergences found (acdc 0.9.0 vs this syntax's needs)
+
+* A delimited block's `Location.absolute_start` begins at the *first stacked
+  attribute line*, not at the open delimiter. Downstream tools that assume
+  the span starts at the delimiter will slice the region wrong; vaire relies on the
+  documented behavior.
+* An indented open block with stacked attribute lines (all lines indented,
+  as Asciidoctor permits inside list items) is *not* parsed as a delimited
+  block: the requirement is silently invisible to `extract`. Requirements
+  MUST NOT be indented (recorded in the spec).
+* The `#ID` shorthand inside a style attribute line is consumed into the
+  style context; vaire parses ids from the raw line rather than trusting
+  `BlockMetadata.id` placement.
+
+== What the round-trip cannot preserve
+
+* Attribute-line granularity: an *edited* line is re-rendered from its items
+  (`[style#id, k=v, ...]`); internal spacing and item order quirks of that
+  one line are normalized. Unedited lines are byte-identical.
+* Ids are immutable through `emit` (a renamed id would break `<<ID>>` xrefs
+  in files not passed to `emit`).
+* Adding or removing whole attribute lines is rejected as unrepresentable.
+* Body text is not editable through `emit`; the record set edits attribute
+  fields only.
+
+== Tests
+
+* Golden corpus (`tests/corpus/`): byte-identical round-trip + idempotence
+  per file.
+* One minimal failing document per validation rule V1–V6
+  (`tests/validation.rs`).
+* Property test (`tests/edit_property.rs`): 64 deterministic random field
+  edits; a line diff must show exactly one changed line, the one carrying
+  the edited field, and round-trip must still hold after the edit.

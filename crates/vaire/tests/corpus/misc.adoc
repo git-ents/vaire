@@ -1,0 +1,48 @@
+Titles, prose, attribute entries, comments and whitespace pass through.
+
+:reqs-dir: docs
+
+// a comment line that must survive
+[requirement#SWR-0001]
+[modality=shall, kind=functional, verification=test]
+--
+The system shall boot within 5 s.
+
+[.note]
+A note inside the requirement body.
+--
+
+[requirement#SWR-0002]
+[modality=may, kind=interface, verification=inspection]
+--
+The debug port may be disabled in production builds.
+--
+
+[requirement#SWR-0003]
+[kind=quality, characteristic=maintainability, modality=should]
+[verification=review]
+--
+Scale:: cyclomatic complexity
+Meter:: static analysis, all modules
+Must:: 15
+Plan:: 10
+--
+
+.Raw prose after requirements
+[example]
+====
+An example block using ==== at the top level.
+====
+
+[requirement#SWR-0006]
+[modality=shall, kind=functional, verification=analysis]
+[status=draft, volatility=high]
+--
+The controller shall retry a dropped sample at most twice.
+
+.An example inside the requirement body
+[.example]
+====
+An example nested inside a requirement.
+====
+--

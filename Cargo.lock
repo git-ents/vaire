@@ -486,6 +486,8 @@ name = "vaire"
 version = "0.0.0"
 dependencies = [
  "acdc-parser",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

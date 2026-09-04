@@ -1,0 +1,21 @@
+[requirement#SWR-0005]
+[modality=shall, kind=functional, verification=analysis]
+[source=STK-009, volatility=high]
+--
+The controller shall log every fault with a timestamp.
+--
+
+[requirement#SWR-0004]
+[modality=shall, kind=functional, verification=demonstration]
+[refines=SWR-0005]
+[rationale="safety interlock must respond before motion", allocated-to=safety]
+--
+The interlock shall stop motion within 50 ms of a trip signal.
+--
+
+[requirement#SWR-0007]
+[modality=shall, kind=functional, verification=test]
+[satisfies=SWR-0005, derives-from=SWR-0004]
+--
+The operator console shall display every active fault within 1 s.
+--
