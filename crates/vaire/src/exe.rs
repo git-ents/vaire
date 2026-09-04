@@ -1,41 +1,80 @@
 //! Implementations of `vaire` command-line operations.
 
+use std::borrow::Cow;
 use std::io::{self, Write};
 
-use anstream::AutoStream;
+use anstream::stream::RawStream;
+use anstream::{AutoStream, ColorChoice};
 use serde::Serialize;
 
-use crate::cli::{CheckFormat, Command, Format, ListFilter, RuleCode};
+use crate::cli::{CheckFormat, ColorWhen, Command, Format, ListFilter, RuleCode};
 use crate::render;
 use vaire::check::ValidationRule;
 
 /// Execute the selected command-line operation.
-pub(crate) fn run(command: Command) -> Result<(), Fail> {
+pub(crate) fn run(command: Command, color: ColorWhen) -> Result<(), Fail> {
     match command {
-        Command::Extract { files, compact } => extract(&files, compact),
+        Command::Extract { files, compact } => extract(&unique(&files), compact),
         Command::Emit {
             json,
             file,
             dry_run,
             diff,
-        } => emit(&json, &file, dry_run, diff),
+        } => emit(&json, &file, dry_run, diff, color),
         Command::Check {
             files,
             quiet,
             summary,
             format,
             rules,
-        } => check(&files, quiet, summary, format, &rules),
-        Command::List { files, filter } => list(&files, &filter),
-        Command::Show { file, id } => show(&file, &id),
+        } => check(&unique(&files), quiet, summary, format, &rules, color),
+        Command::List { files, filter } => list(&unique(&files), &filter, color),
+        Command::Show { file, id } => show(&file, &id, color),
         Command::Edit {
             file,
             id,
             sets,
             dry_run,
             diff,
-        } => edit(&file, &id, &sets, dry_run, diff),
+        } => edit(&file, &id, &sets, dry_run, diff, color),
     }
+}
+
+/// File arguments in first-occurrence order; a path repeated on the command
+/// line is read once, so read-only commands neither duplicate records nor
+/// report phantom cross-file violations.
+fn unique(files: &[String]) -> Cow<'_, [String]> {
+    let repeated = files
+        .iter()
+        .enumerate()
+        .any(|(i, file)| files.iter().take(i).any(|seen| seen == file));
+    if !repeated {
+        return Cow::Borrowed(files);
+    }
+    let mut out: Vec<String> = Vec::with_capacity(files.len());
+    for file in files {
+        if !out.iter().any(|seen| seen == file) {
+            out.push(file.clone());
+        }
+    }
+    Cow::Owned(out)
+}
+
+/// The color choice for one human-oriented stream: an explicit `--color`
+/// overrides TTY detection, while `auto` keeps `anstream`'s detection and
+/// its `NO_COLOR` handling.
+fn human<S: RawStream>(color: ColorWhen, stream: &S) -> ColorChoice {
+    match color {
+        ColorWhen::Always => ColorChoice::Always,
+        ColorWhen::Never => ColorChoice::Never,
+        ColorWhen::Auto => AutoStream::choice(stream),
+    }
+}
+
+/// Write one terminated line to stdout, propagating write failures (a closed
+/// pipe, for example) instead of panicking.
+fn stdout_line(text: &str) -> Result<(), Fail> {
+    writeln!(io::stdout().lock(), "{text}").map_err(Fail::from)
 }
 
 /// Failure modes for command execution.
@@ -70,15 +109,20 @@ fn extract(files: &[String], compact: bool) -> Result<(), Fail> {
         serde_json::to_string_pretty(&all)
     }
     .map_err(|e| Fail::Message(e.to_string()))?;
-    println!("{json}");
-    Ok(())
+    stdout_line(&json)
 }
 
-fn emit(json: &str, file: &str, dry_run: bool, show_diff: bool) -> Result<(), Fail> {
+fn emit(
+    json: &str,
+    file: &str,
+    dry_run: bool,
+    show_diff: bool,
+    color: ColorWhen,
+) -> Result<(), Fail> {
     let records = std::fs::read_to_string(json).map_err(|e| Fail::Message(e.to_string()))?;
     let edits = vaire::emit::plan(&records, file)?;
     if dry_run || show_diff {
-        let choice = AutoStream::choice(&io::stderr());
+        let choice = human(color, &io::stderr());
         let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
         render::diff(&mut stderr, file, &edits, choice)?;
         if edits.is_empty() {
@@ -97,6 +141,7 @@ fn check(
     summary: bool,
     format: Option<CheckFormat>,
     rules: &[RuleCode],
+    color: ColorWhen,
 ) -> Result<(), Fail> {
     let outcome = vaire::check::check_outcome(files)?;
     let displayed = displayed(&outcome.violations, rules);
@@ -104,14 +149,14 @@ fn check(
         Some(format) => print_report(files.len(), &outcome, &displayed, format)?,
         None => {
             if !quiet {
-                let choice = AutoStream::choice(&io::stderr());
+                let choice = human(color, &io::stderr());
                 let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
                 for violation in &displayed {
                     render::violation_line(&mut stderr, violation, choice)?;
                 }
             }
             if summary {
-                print_summary(files.len(), outcome.requirement_count, &outcome.violations);
+                print_summary(files.len(), outcome.requirement_count, &outcome.violations)?;
             }
         }
     }
@@ -187,8 +232,7 @@ fn print_report(
         CheckFormat::Compact => serde_json::to_string(&report),
     }
     .map_err(|e| Fail::Message(e.to_string()))?;
-    println!("{json}");
-    Ok(())
+    stdout_line(&json)
 }
 
 /// Write the `--summary` report: totals, then per-rule counts V1–V6 in code
@@ -197,15 +241,15 @@ fn print_summary(
     file_count: usize,
     requirement_count: usize,
     violations: &[vaire::check::Violation],
-) {
-    println!(
+) -> Result<(), Fail> {
+    stdout_line(&format!(
         "checked {}, {}, {}",
         plural("file", file_count),
         plural("requirement", requirement_count),
         plural("violation", violations.len()),
-    );
+    ))?;
     let by_rule = |rule: ValidationRule| violations.iter().filter(|v| v.rule == rule).count();
-    println!(
+    stdout_line(&format!(
         "violations by rule: V1={} V2={} V3={} V4={} V5={} V6={}",
         by_rule(ValidationRule::DuplicateId),
         by_rule(ValidationRule::UnresolvedTrace),
@@ -213,7 +257,8 @@ fn print_summary(
         by_rule(ValidationRule::ModalityDisagreement),
         by_rule(ValidationRule::CompoundStatement),
         by_rule(ValidationRule::UnknownAttribute),
-    );
+    ))?;
+    Ok(())
 }
 
 /// `1 file` / `3 files`.
@@ -225,7 +270,7 @@ fn plural(noun: &str, n: usize) -> String {
     }
 }
 
-fn list(files: &[String], filter: &ListFilter) -> Result<(), Fail> {
+fn list(files: &[String], filter: &ListFilter, color: ColorWhen) -> Result<(), Fail> {
     for path in &filter.file {
         if !files.contains(path) {
             return Err(Fail::Message(format!(
@@ -237,7 +282,7 @@ fn list(files: &[String], filter: &ListFilter) -> Result<(), Fail> {
     let selected = read_selected(files, filter)?;
     match filter.format {
         Format::Table => {
-            let choice = AutoStream::choice(&io::stdout());
+            let choice = human(color, &io::stdout());
             let mut stdout = AutoStream::new(Box::new(io::stdout()) as Box<dyn Write>, choice);
             for (file, records) in &selected {
                 let matched: Vec<&vaire::Record> =
@@ -361,8 +406,7 @@ fn print_json(rows: Vec<ListRow<'_>>, pretty: bool) -> Result<(), Fail> {
         serde_json::to_string(&rows)
     }
     .map_err(|e| Fail::Message(e.to_string()))?;
-    println!("{json}");
-    Ok(())
+    stdout_line(&json)
 }
 
 /// Column order of `--format tsv`: the JSON fields with `span` flattened.
@@ -403,8 +447,8 @@ fn tsv_cell(text: &str) -> String {
     text.replace(['\t', '\n', '\r'], " ")
 }
 
-fn show(file: &str, id: &str) -> Result<(), Fail> {
-    let choice = AutoStream::choice(&io::stdout());
+fn show(file: &str, id: &str, color: ColorWhen) -> Result<(), Fail> {
+    let choice = human(color, &io::stdout());
     let mut stdout = AutoStream::new(Box::new(io::stdout()) as Box<dyn Write>, choice);
     vaire::show::show(&mut stdout, file, id, choice)?;
     Ok(())
@@ -416,13 +460,14 @@ fn edit(
     raw_sets: &[String],
     dry_run: bool,
     show_diff: bool,
+    color: ColorWhen,
 ) -> Result<(), Fail> {
     let sets = raw_sets
         .iter()
         .map(|raw| vaire::edit::Set::parse(raw))
         .collect::<vaire::Result<Vec<_>>>()?;
     let edits = vaire::edit::plan(file, id, &sets)?;
-    let choice = AutoStream::choice(&io::stderr());
+    let choice = human(color, &io::stderr());
     let mut stderr = AutoStream::new(Box::new(io::stderr()) as Box<dyn Write>, choice);
     if dry_run || show_diff {
         render::diff(&mut stderr, file, &edits, choice)?;

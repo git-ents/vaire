@@ -7,23 +7,54 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[command(
     name = "vaire",
     version,
-    about = "Requirement records in AsciiDoc: extract, emit, check"
+    about = "Requirement records in AsciiDoc: extract, emit, check",
+    after_help = EXAMPLES
 )]
 pub(crate) struct Cli {
+    /// When to color human-oriented output: violation lines, the `list`
+    /// table, `show`, and diffs. Machine-readable output (`extract`,
+    /// `--format json|compact|tsv`) is never colored. `auto` colors a
+    /// terminal and honors `NO_COLOR`; `always` and `never` override
+    /// detection.
+    #[arg(long, value_enum, default_value = "auto", global = true)]
+    pub(crate) color: ColorWhen,
     /// The operation selected by the caller.
     #[command(subcommand)]
     pub(crate) command: Command,
 }
+
+/// Worked examples shown after `vaire --help`; every command matches the
+/// option semantics documented on the subcommands.
+const EXAMPLES: &str = "\
+Examples:
+  vaire extract spec.adoc > records.json
+      Extract every requirement record to a pretty JSON document.
+  vaire extract --compact spec.adoc > records.json
+      The same records as one single-line JSON document.
+  vaire check spec.adoc derived.adoc
+      Validate a file set; cross-file traces resolve across all of them.
+  vaire list spec.adoc --modality shall --status draft
+      Table of records matching every filter; --format json for machines.
+  vaire show spec.adoc SWR-0001
+      One requirement: attribute lines, traces, and body.
+  vaire emit -n records.json spec.adoc
+      Preview the planned rewrites on stderr without writing the file.
+  vaire emit --diff records.json spec.adoc
+      Show the rewrites as a diff on stderr, then write the file.
+  vaire edit -n spec.adoc SWR-0001 --set status=approved
+      Preview the attribute edit on stderr; drop -n to apply it in place.";
 
 /// Operations supported by `vaire`.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// Extract requirement records as JSON located by byte spans.
     Extract {
-        /// AsciiDoc files to extract.
+        /// AsciiDoc files to extract; a path repeated on the command line
+        /// is read once.
         #[arg(required = true)]
         files: Vec<String>,
-        /// Emit one JSON object per line instead of a pretty document.
+        /// Emit one compact single-line JSON document instead of a
+        /// pretty-printed one.
         #[arg(long, short = 'c')]
         compact: bool,
     },
@@ -42,7 +73,8 @@ pub(crate) enum Command {
     },
     /// Validate requirement records against rules V1–V6.
     Check {
-        /// AsciiDoc files to validate; cross-file rules see the whole set.
+        /// AsciiDoc files to validate; cross-file rules see the whole set,
+        /// and a path repeated on the command line is read once.
         #[arg(required = true)]
         files: Vec<String>,
         /// Suppress per-violation output; report only the exit code.
@@ -72,7 +104,8 @@ pub(crate) enum Command {
     /// matches. Matching is case-sensitive exact everywhere except `--id`,
     /// which is a prefix match.
     List {
-        /// AsciiDoc files to list.
+        /// AsciiDoc files to list; a path repeated on the command line is
+        /// listed once.
         #[arg(required = true)]
         files: Vec<String>,
         /// Record selection and output-format options.
@@ -205,6 +238,17 @@ impl RuleCode {
             Self::V6 => vaire::check::ValidationRule::UnknownAttribute,
         }
     }
+}
+
+/// When to style human-oriented output, selected by the global `--color`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ColorWhen {
+    /// Color when the target is a terminal; `NO_COLOR` and `CLICOLOR` apply.
+    Auto,
+    /// Color regardless of the target, even when piped.
+    Always,
+    /// Never color, even on a terminal.
+    Never,
 }
 
 /// Modalities accepted by `--modality`, matched exactly.

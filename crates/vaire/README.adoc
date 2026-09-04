@@ -29,9 +29,13 @@ vocabularies (status, verification) yield an empty result instead.
 array of `file`/`id`/`span`/`modality`/`kind`/`status`/`verification`/
 `statement` objects — `file` is the path as passed, `span` the record's byte
 range, absent attributes are `null`; `--format tsv` writes the same fields
-tab-separated with a header row. Machine output never carries color; the
-table is colored when the target is a terminal (`anstream` auto-detection)
-and plain when piped.
+tab-separated with a header row. Machine output never carries color. Human
+output — the table, `show`, violation lines, and diffs — is colored when the
+target is a terminal (`anstream` auto-detection, honoring `NO_COLOR`) and
+plain when piped; the global `--color auto|always|never` overrides detection,
+so `--color always` colors even piped output and `--color never` never colors.
+A path repeated on the command line is read once by `extract`, `check`, and
+`list`.
 
 == Round-trip contract
 
