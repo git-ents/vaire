@@ -81,8 +81,8 @@ pub struct AttrLine {
 /// A requirement record located in one file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Record {
-    /// Path exactly as passed to `extract`. `emit` matches records to files on
-    /// this string.
+    /// Path exactly as passed to `extract`. `emit` canonicalizes it to decide
+    /// whether the record applies to the target file.
     pub file: String,
     pub id: String,
     /// Byte span of the whole record region: first attribute line through the
